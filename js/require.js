@@ -216,13 +216,13 @@ var requirejs, require, define;
             //registry of just enabled modules, to speed
             //cycle breaking code when lots of modules
             //are registered, but not activated.
-            enabledRegistry = {},
+            enabledRegistry = {},// 缓存enabled Module实例
             undefEvents = {},
             defQueue = [],// 当前context的依赖，ele:[name, deps, callback]
             defined = {},
             urlFetched = {},
             bundlesMap = {},
-            requireCounter = 1,
+            requireCounter = 1,// 为什么从1开始计数？
             unnormalizedCounter = 1;
 
         /**
@@ -423,8 +423,10 @@ var requirejs, require, define;
                 normalizedName = '';
             //If no name, then it means it is a require call, generate an
             //internal name.
+            // 当没有name时，说明是一次require调用，使用内部名。
+            // requireMod = getModule(makeModuleMap(null, relMap));
             if (!name) {
-                isDefine = false;
+                isDefine = false;// 内部名模块isDefine是false,
                 name = '_@r' + (requireCounter += 1);
             }
 
@@ -677,7 +679,7 @@ var requirejs, require, define;
                             stillLoading = true;
                         } else {
                             noLoads.push(modId);
-                            removeScript(modId);
+                            removeScript(modId);// 依赖模块超时后会被移除
                         }
                     } else if (!mod.inited && mod.fetched && map.isDefine) {
                         stillLoading = true;
@@ -692,7 +694,7 @@ var requirejs, require, define;
                     }
                 }
             });
-
+                // 加载超时报错
             if (expired && noLoads.length) {
                 //If wait time expired, throw error of unloaded modules.
                 err = makeError('timeout', 'Load timeout for modules: ' + noLoads, null, noLoads);
@@ -774,7 +776,7 @@ var requirejs, require, define;
                 this.errback = errback;
 
                 //Indicate this module has be initialized
-                this.inited = true;
+                this.inited = true;// 将this.inited置为true
 
                 this.ignore = options.ignore;
 
@@ -794,6 +796,7 @@ var requirejs, require, define;
             defineDep: function (i, depExports) {
                 //Because of cycles, defined callback for a given
                 //export can be called more than once.
+                //依赖已经加载完毕，depMatched[依赖]=true,未加载的依赖数depCount减一，depExports[依赖]=depExports
                 if (!this.depMatched[i]) {
                     this.depMatched[i] = true;
                     this.depCount -= 1;
@@ -805,7 +808,7 @@ var requirejs, require, define;
                 if (this.fetched) {
                     return;
                 }
-                this.fetched = true;
+                this.fetched = true;// 将fetched置为true
 
                 context.startTime = (new Date()).getTime();
 
@@ -851,7 +854,7 @@ var requirejs, require, define;
                     factory = this.factory;
 
                 if (!this.inited) {
-                    // Only fetch if not already in the defQueue.
+                    // Only fetch if not already in the defQueue.// 为什么只在defQueue中没有当前模块时，执行fetch?
                     if (!hasProp(context.defQueueMap, id)) {
                         this.fetch();
                     }
@@ -863,7 +866,7 @@ var requirejs, require, define;
                     //define itself again. If already in the process
                     //of doing that, skip this work.
                     this.defining = true;
-
+                    // 当前模块的依赖都已经加载完毕
                     if (this.depCount < 1 && !this.defined) {
                         if (isFunction(factory)) {
                             //If there is an error listener, favor passing
@@ -923,9 +926,9 @@ var requirejs, require, define;
                         }
 
                         //Clean up
-                        cleanRegistry(id);
+                        cleanRegistry(id);// 从registry和enableRegistry中清除当前模块，registry和enableRegistry是用于缓存没有加载完的模块？
 
-                        this.defined = true;
+                        this.defined = true;// 将defined置为true,标志着模块加载完毕？
                     }
 
                     //Finished the define stage. Allow calling check again
@@ -1100,14 +1103,14 @@ var requirejs, require, define;
             },
 
             enable: function () {
-                enabledRegistry[this.map.id] = this;
-                this.enabled = true;
+                enabledRegistry[this.map.id] = this;//执行enable时将Module缓存到enabledRegistry[this.map.id]
+                this.enabled = true;// 将this.enable置为true
 
                 //Set flag mentioning that the module is enabling,
                 //so that immediate calls to the defined callbacks
                 //for dependencies do not trigger inadvertent load
                 //with the depCount still being zero.
-                this.enabling = true;
+                this.enabling = true;// 正在enable 当前模块的依赖
 
                 //Enable each dependency
                 each(this.depMaps, bind(this, function (depMap, i) {
@@ -1135,7 +1138,7 @@ var requirejs, require, define;
                             if (this.undefed) {
                                 return;
                             }
-                            this.defineDep(i, depExports);
+                            this.defineDep(i, depExports);// 若depExports对应模块已经加载完毕，depCount-1
                             this.check();
                         }));
 
@@ -1152,13 +1155,14 @@ var requirejs, require, define;
                     }
 
                     id = depMap.id;
-                    mod = registry[id];
+                    mod = registry[id];// 获取当前依赖的实例
 
                     //Skip special modules like 'require', 'exports', 'module'
                     //Also, don't call enable if it is already enabled,
                     //important in circular dependency cases.
+                    //
                     if (!hasProp(handlers, id) && mod && !mod.enabled) {
-                        context.enable(depMap, this);
+                        context.enable(depMap, this);// 跳过init,enable当前依赖, enable main 的入口
                     }
                 }));
 
@@ -1171,8 +1175,8 @@ var requirejs, require, define;
                     }
                 }));
 
-                this.enabling = false;
-
+                this.enabling = false;// 当前模块依赖加载完毕
+                // 没有依赖或者所有依赖enable后，执行this.check()
                 this.check();
             },
 
@@ -1279,7 +1283,7 @@ var requirejs, require, define;
              * Set a configuration for the context.
              * @param {Object} cfg config object to integrate.
              */
-            configure: function (cfg) {
+            configure: function (cfg) {// 当cfg==={}时，后面代码都没有执行
                 //Make sure the baseUrl ends in a slash.
                 if (cfg.baseUrl) {
                     if (cfg.baseUrl.charAt(cfg.baseUrl.length - 1) !== '/') {
@@ -1456,9 +1460,9 @@ var requirejs, require, define;
                         //Store if map config should be applied to this require
                         //call for dependencies.
                         requireMod.skipMap = options.skipMap;
-
+                        // main加载入口
                         requireMod.init(deps, callback, errback, {
-                            enabled: true
+                            enabled: true // 将enabled置为true,以执行this.enable(),从而enable当前模块及其依赖
                         });
 
                         checkLoaded();
@@ -1765,7 +1769,7 @@ var requirejs, require, define;
 
         //Find the right context, use default
         var context, config,
-            contextName = defContextName;
+            contextName = defContextName;// 将contextName设置为默认值“_”
 
         // Determine if have config object in the call.
         if (!isArray(deps) && typeof deps !== 'string') {
@@ -1777,7 +1781,7 @@ var requirejs, require, define;
                 callback = errback;
                 errback = optional;
             } else {
-                deps = [];
+                deps = [];// 将deps置为空数组
             }
         }
 
@@ -1791,7 +1795,7 @@ var requirejs, require, define;
         }
 
         if (config) {
-            context.configure(config);
+            context.configure(config);//当cfg.deps || cfg.callback时，调用context.require()
         }
 
         return context.require(deps, callback, errback);
@@ -2004,7 +2008,7 @@ var requirejs, require, define;
     }
 
     //Look for a data-main script attribute, which could also adjust the baseUrl.
-    //寻找data-main文件，将data-main文件加入cfg.deps
+    //寻找data-main文件，将data-main文件加入cfg.deps,无cfg.baseUrl时将data-main路径作为baseUrl.
     if (isBrowser && !cfg.skipDataMain) {
         //Figure out baseUrl. Get it from the script tag with require.js in it.
         eachReverse(scripts(), function (script) {
@@ -2045,6 +2049,7 @@ var requirejs, require, define;
                 }
 
                 //Put the data-main script in the files to load.
+                // 将入口文件data-main放进依赖中
                 cfg.deps = cfg.deps ? cfg.deps.concat(mainScript) : [mainScript];
 
                 return true;
