@@ -749,12 +749,12 @@ var requirejs, require, define;
                 //Do not do more inits if already done. Can happen if there
                 //are multiple define calls for the same module. That is not
                 //a normal, common case, but it is also not unexpected.
-                if (this.inited) {
+                if (this.inited) {// 如果模块已经初始化，return
                     return;
                 }
 
                 this.factory = factory;
-
+                // 绑定error事件
                 if (errback) {
                     //Register for errors on this module.
                     this.on('error', errback);
@@ -771,6 +771,7 @@ var requirejs, require, define;
                 //"shim" deps are passed in here directly, and
                 //doing a direct modification of the depMaps array
                 //would affect that config.
+                // 将依赖数组拷贝到对象的depMaps属性中
                 this.depMaps = depMaps && depMaps.slice(0);
 
                 this.errback = errback;
@@ -785,7 +786,7 @@ var requirejs, require, define;
                 //the dependencies are not known until init is called. So
                 //if enabled previously, now trigger dependencies as enabled.
                 if (options.enabled || this.enabled) {
-                    //Enable this module and dependencies.
+                    //Enable this module and dependencies.enable模块及依赖
                     //Will call this.check()
                     this.enable();
                 } else {
@@ -852,9 +853,9 @@ var requirejs, require, define;
                     depExports = this.depExports,
                     exports = this.exports,
                     factory = this.factory;
-
-                if (!this.inited) {
-                    // Only fetch if not already in the defQueue.// 为什么只在defQueue中没有当前模块时，执行fetch?
+                // 如果当前模块未被初始化，
+                if (!this.inited) {// 依赖模块加载执行该分支，因为依赖跳过init,直接执行enable了
+                    // Only fetch if not already in the defQueue.// 貌似模块加载完成后，执行过define函数后才会被加入到defQueueMap中
                     if (!hasProp(context.defQueueMap, id)) {
                         this.fetch();
                     }
@@ -1101,7 +1102,7 @@ var requirejs, require, define;
                 context.enable(pluginMap, this);
                 this.pluginMaps[pluginMap.id] = pluginMap;
             },
-
+            // Module.enable  
             enable: function () {
                 enabledRegistry[this.map.id] = this;//执行enable时将Module缓存到enabledRegistry[this.map.id]
                 this.enabled = true;// 将this.enable置为true
@@ -1112,13 +1113,14 @@ var requirejs, require, define;
                 //with the depCount still being zero.
                 this.enabling = true;// 正在enable 当前模块的依赖
 
-                //Enable each dependency
+                //Enable each dependency //enable 每一个依赖项
                 each(this.depMaps, bind(this, function (depMap, i) {
                     var id, mod, handler;
 
                     if (typeof depMap === 'string') {
                         //Dependency needs to be converted to a depMap
                         //and wired up to this module.
+                        // a.获取依赖的Module实例
                         depMap = makeModuleMap(depMap,
                                                (this.map.isDefine ? this.map : this.map.parentMap),
                                                false,
@@ -1132,13 +1134,15 @@ var requirejs, require, define;
                             return;
                         }
 
-                        this.depCount += 1;
-
+                        this.depCount += 1; // 依赖项+1
+                        // b.绑定依赖加载完毕的defined事件
+                        //通知依赖加载完毕，可以使用
                         on(depMap, 'defined', bind(this, function (depExports) {
                             if (this.undefed) {
                                 return;
                             }
                             this.defineDep(i, depExports);// 若depExports对应模块已经加载完毕，depCount-1
+                            // 模块加载完毕，check
                             this.check();
                         }));
 
@@ -1162,6 +1166,7 @@ var requirejs, require, define;
                     //important in circular dependency cases.
                     //
                     if (!hasProp(handlers, id) && mod && !mod.enabled) {
+                        // c.加载依赖
                         context.enable(depMap, this);// 跳过init,enable当前依赖, enable main 的入口
                     }
                 }));
@@ -1555,6 +1560,7 @@ var requirejs, require, define;
              * is passed in for context, when this method is overridden by
              * the optimizer. Not shown here to keep code compact.
              */
+            // context.enable
             enable: function (depMap) {
                 var mod = getOwn(registry, depMap.id);
                 if (mod) {
@@ -2127,6 +2133,7 @@ var requirejs, require, define;
             context.defQueue.push([name, deps, callback]);
             context.defQueueMap[name] = true;
         } else {
+            // 将依赖放入全局依赖队列globalDefQueue
             globalDefQueue.push([name, deps, callback]);
         }
     };
