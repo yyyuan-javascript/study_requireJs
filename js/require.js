@@ -218,7 +218,7 @@ var requirejs, require, define;
             //are registered, but not activated.
             enabledRegistry = {},// 缓存enabled Module实例
             undefEvents = {},
-            defQueue = [],// 当前context的依赖，ele:[name, deps, callback]
+            defQueue = [],// define 模块数组，ele:[name, deps, callback]
             defined = {},
             urlFetched = {},
             bundlesMap = {},
@@ -628,6 +628,7 @@ var requirejs, require, define;
                     //in the module already.
                     if (dep && !mod.depMatched[i] && !processed[depId]) {
                         if (getOwn(traced, depId)) {
+                            // 如果循环依赖， defined[depId]为undefined,mod.check中执行excCb的时候exports为undefined,即依赖项为undefined
                             mod.defineDep(i, defined[depId]);
                             mod.check(); //pass false?
                         } else {
@@ -797,9 +798,9 @@ var requirejs, require, define;
             defineDep: function (i, depExports) {
                 //Because of cycles, defined callback for a given
                 //export can be called more than once.
-                //依赖已经加载完毕，depMatched[依赖]=true,未加载的依赖数depCount减一，depExports[依赖]=depExports
+                // 将依赖模块depExports按顺序存放到指定位置i，depExports就对应require方法传入的回调中的arguments。depCount-1
                 if (!this.depMatched[i]) {
-                    this.depMatched[i] = true;
+                    this.depMatched[i] = true;//标志着已经执行完defined回调函数，暴露相应模块
                     this.depCount -= 1;
                     this.depExports[i] = depExports;
                 }
@@ -855,7 +856,7 @@ var requirejs, require, define;
                     factory = this.factory;
                 // 如果当前模块未被初始化，
                 if (!this.inited) {// 依赖模块加载执行该分支，因为依赖跳过init,直接执行enable了
-                    // Only fetch if not already in the defQueue.// 貌似模块加载完成后，执行过define函数后才会被加入到defQueueMap中
+                    // Only fetch if not already in the defQueue.// 模块加载完成后，执行过define函数后才会被加入到defQueueMap中
                     if (!hasProp(context.defQueueMap, id)) {
                         this.fetch();
                     }
@@ -867,7 +868,7 @@ var requirejs, require, define;
                     //define itself again. If already in the process
                     //of doing that, skip this work.
                     this.defining = true;
-                    // 当前模块的依赖都已经加载完毕
+                    // depCount < 1说明当前模块的依赖都已经加载完毕
                     if (this.depCount < 1 && !this.defined) {
                         if (isFunction(factory)) {
                             //If there is an error listener, favor passing
@@ -884,6 +885,7 @@ var requirejs, require, define;
                                     err = e;
                                 }
                             } else {
+                                // 通过execCb方法执行回调，得到需要暴露的模块
                                 exports = context.execCb(id, factory, depExports, exports);
                             }
 
@@ -911,10 +913,11 @@ var requirejs, require, define;
                             //Just a literal value
                             exports = factory;
                         }
-
+                        // exports是define回调执行完毕得到的需要暴露的模块。
                         this.exports = exports;
 
                         if (this.map.isDefine && !this.ignore) {
+                            //将需要暴露的模块缓存到defined数组中
                             defined[id] = exports;
 
                             if (req.onResourceLoad) {
@@ -927,9 +930,9 @@ var requirejs, require, define;
                         }
 
                         //Clean up
-                        cleanRegistry(id);// 从registry和enableRegistry中清除当前模块，registry和enableRegistry是用于缓存没有加载完的模块？
+                        cleanRegistry(id);// 从registry和enableRegistry中清除当前模块，registry和enableRegistry是用于缓存没有defined的模块？
 
-                        this.defined = true;// 将defined置为true,标志着模块加载完毕？
+                        this.defined = true;// 将defined置为true,表示加载相应模块并执行其回调函数，暴露相应的模块
                     }
 
                     //Finished the define stage. Allow calling check again
@@ -939,6 +942,7 @@ var requirejs, require, define;
 
                     if (this.defined && !this.defineEmitted) {
                         this.defineEmitted = true;
+                        // 触发 defined事件，表明require函数中的依赖模块已经加载完毕，能够在require回调的agrument中暴露相应的模块
                         this.emit('defined', this.exports);
                         this.defineEmitComplete = true;
                     }
@@ -1136,13 +1140,13 @@ var requirejs, require, define;
 
                         this.depCount += 1; // 依赖项+1
                         // b.绑定依赖加载完毕的defined事件
-                        //通知依赖加载完毕，可以使用
+                        //
                         on(depMap, 'defined', bind(this, function (depExports) {
                             if (this.undefed) {
                                 return;
                             }
-                            this.defineDep(i, depExports);// 若depExports对应模块已经加载完毕，depCount-1
-                            // 模块加载完毕，check
+                            this.defineDep(i, depExports);// 将依赖模块depExports存放到指定位置i，depCount-1
+                            // 模块加载完毕，check方法会使用context.execCb来执行require函数中的回调
                             this.check();
                         }));
 
@@ -1208,6 +1212,7 @@ var requirejs, require, define;
 
         function callGetModule(args) {
             //Skip modules already defined.
+            //跳过已经加载的模块，加载完毕后的代码都会放到defined中缓存，避免重复加载
             if (!hasProp(defined, args[0])) {
                 getModule(makeModuleMap(args[0], null, true)).init(args[1], args[2]);
             }
@@ -1393,7 +1398,7 @@ var requirejs, require, define;
                 //require with those args. This is useful when require is defined as a
                 //config object before require.js is loaded.
                 if (cfg.deps || cfg.callback) {
-                    context.require(cfg.deps || [], cfg.callback);
+                    context.require(cfg.deps || [], cfg.callback);// 实际是调用了localRequire
                 }
             },
 
@@ -1465,7 +1470,7 @@ var requirejs, require, define;
                         //Store if map config should be applied to this require
                         //call for dependencies.
                         requireMod.skipMap = options.skipMap;
-                        // main加载入口
+                        // main加载入口,min作为内部模块的依赖被加载。
                         requireMod.init(deps, callback, errback, {
                             enabled: true // 将enabled置为true,以执行this.enable(),从而enable当前模块及其依赖
                         });
@@ -1574,6 +1579,7 @@ var requirejs, require, define;
              * load call.
              * @param {String} moduleName the name of the module to potentially complete.
              */
+            // context.completeLoad
             completeLoad: function (moduleName) {
                 var found, args, mod,
                     shim = getOwn(config.shim, moduleName) || {},
@@ -1596,7 +1602,7 @@ var requirejs, require, define;
                         //Found matching define call for this script!
                         found = true;
                     }
-
+                    // 加载模块及依赖,运行define方法传入的回调，得到模块对象
                     callGetModule(args);
                 }
                 context.defQueueMap = {};
@@ -1691,7 +1697,7 @@ var requirejs, require, define;
 
             //Delegates to req.load. Broken out as a separate function to
             //allow overriding in the optimizer.
-            load: function (id, url) {
+            load: function (id, url) {// context.load
                 req.load(context, id, url);
             },
 
@@ -1712,6 +1718,7 @@ var requirejs, require, define;
              * @param {Event} evt the event from the browser for the script
              * that was loaded.
              */
+            // context.onScriptLoad
             onScriptLoad: function (evt) {
                 //Using currentTarget instead of target for Firefox 2.0's sake. Not
                 //all old browsers will be supported, but this one was easy enough
@@ -1965,7 +1972,7 @@ var requirejs, require, define;
             //call to the module name (which is stored on the node), hold on
             //to a reference to this node, but clear after the DOM insertion.
             currentlyAddingScript = node;
-            if (baseElement) {
+            if (baseElement) {//插入html中
                 head.insertBefore(node, baseElement);
             } else {
                 head.appendChild(node);
@@ -2107,6 +2114,7 @@ var requirejs, require, define;
                 //work though if it just needs require.
                 //REQUIRES the function to expect the CommonJS variables in the
                 //order listed below.
+                // 兼容commonjs写法
                 deps = (callback.length === 1 ? ['require'] : ['require', 'exports', 'module']).concat(deps);
             }
         }
